@@ -12,6 +12,7 @@ from .models import (
     TaskUpdate,
     TokenResponse,
 )
+from .pagination import page_count, paginate
 from .security import (
     create_access_token,
     decode_access_token,
@@ -74,6 +75,22 @@ def create_task(payload: TaskCreate, user: str = Depends(current_user)) -> Task:
         status=payload.status,
         priority=payload.priority,
     )
+
+
+@app.get("/tasks/page")
+def page_tasks(
+    user: str = Depends(current_user),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    page, total = paginate(tasks.list(user), offset, limit)
+    return {
+        "items": page,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "pages": page_count(total, limit),
+    }
 
 
 @app.get("/tasks/{task_id}", response_model=Task)
