@@ -62,3 +62,14 @@ def test_health_endpoint(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_stats_counts_tasks_by_status(client: TestClient, auth_headers: dict) -> None:
+    _create_task(client, auth_headers, title="First")
+    _create_task(client, auth_headers, title="Second", status="done")
+    response = client.get("/tasks/stats", headers=auth_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert body["by_status"] == {"todo": 1, "doing": 0, "done": 1}
+    assert body["completion_rate"] == 0.5

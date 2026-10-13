@@ -76,6 +76,11 @@ def create_task(payload: TaskCreate, user: str = Depends(current_user)) -> Task:
     )
 
 
+@app.get("/tasks/stats")
+def task_stats(user: str = Depends(current_user)) -> dict:
+    return tasks.stats(user)
+
+
 @app.get("/tasks/{task_id}", response_model=Task)
 def get_task(task_id: int, user: str = Depends(current_user)) -> Task:
     task = tasks.get(task_id, user)

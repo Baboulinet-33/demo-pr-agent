@@ -89,3 +89,13 @@ class TaskStore:
                 return False
             del self._tasks[task_id]
             return True
+
+    def stats(self, owner: str) -> Dict[str, object]:
+        with self._lock:
+            tasks = [task for task in self._tasks.values() if task.owner == owner]
+        counts = {value.value: 0 for value in TaskStatus}
+        for task in tasks:
+            counts[task.status.value] += 1
+        total = len(tasks)
+        completion = round(counts["done"] / total, 4) if total else 0.0
+        return {"total": total, "by_status": counts, "completion_rate": completion}
