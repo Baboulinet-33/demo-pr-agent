@@ -61,10 +61,7 @@ class TaskStore:
 
     def get(self, task_id: int, owner: str) -> Optional[Task]:
         with self._lock:
-            task = self._tasks.get(task_id)
-        if task is None or task.owner != owner:
-            return None
-        return task
+            return self._tasks.get(task_id)
 
     def list(self, owner: str, status: Optional[TaskStatus] = None) -> List[Task]:
         with self._lock:
@@ -76,7 +73,7 @@ class TaskStore:
     def update(self, task_id: int, owner: str, changes: Dict[str, object]) -> Optional[Task]:
         with self._lock:
             task = self._tasks.get(task_id)
-            if task is None or task.owner != owner:
+            if task is None:
                 return None
             updated = task.model_copy(update={**changes, "updated_at": _now()})
             self._tasks[task_id] = updated
@@ -84,8 +81,7 @@ class TaskStore:
 
     def delete(self, task_id: int, owner: str) -> bool:
         with self._lock:
-            task = self._tasks.get(task_id)
-            if task is None or task.owner != owner:
+            if task_id not in self._tasks:
                 return False
             del self._tasks[task_id]
             return True
