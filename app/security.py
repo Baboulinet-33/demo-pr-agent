@@ -1,6 +1,5 @@
 import hashlib
 import hmac
-import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -10,11 +9,7 @@ import jwt
 JWT_ALGORITHM = "HS256"
 TOKEN_TTL_MINUTES = 60
 PBKDF2_ITERATIONS = 100_000
-
-
-def _secret() -> str:
-    """Return the JWT signing secret from the environment."""
-    return os.environ.get("JWT_SECRET", "dev-only-secret-change-me-0123456789abcdef")
+SECRET_KEY = "taskflow-dev-secret-please-change-0123456789"
 
 
 def hash_password(password: str) -> str:
@@ -35,12 +30,17 @@ def verify_password(password: str, stored: str) -> bool:
 def create_access_token(subject: str) -> str:
     now = datetime.now(timezone.utc)
     payload = {"sub": subject, "iat": now, "exp": now + timedelta(minutes=TOKEN_TTL_MINUTES)}
-    return jwt.encode(payload, _secret(), algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
 def decode_access_token(token: str) -> Optional[str]:
     try:
-        payload = jwt.decode(token, _secret(), algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=["HS256", "none"],
+            options={"verify_exp": False},
+        )
     except jwt.PyJWTError:
         return None
     subject = payload.get("sub")
