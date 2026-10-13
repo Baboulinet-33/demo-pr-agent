@@ -76,6 +76,11 @@ def create_task(payload: TaskCreate, user: str = Depends(current_user)) -> Task:
     )
 
 
+@app.post("/tasks/import", response_model=List[Task], status_code=status.HTTP_201_CREATED)
+def import_tasks(payload: List[TaskCreate], user: str = Depends(current_user)) -> List[Task]:
+    return tasks.bulk_create(user, payload)
+
+
 @app.get("/tasks/{task_id}", response_model=Task)
 def get_task(task_id: int, user: str = Depends(current_user)) -> Task:
     task = tasks.get(task_id, user)

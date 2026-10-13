@@ -2,7 +2,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from .models import Priority, Task, TaskStatus
+from .models import Priority, Task, TaskCreate, TaskStatus
 
 
 def _now() -> datetime:
@@ -89,3 +89,21 @@ class TaskStore:
                 return False
             del self._tasks[task_id]
             return True
+
+    def bulk_create(self, owner: str, items: List[TaskCreate]) -> List[Task]:
+        created: List[Task] = []
+        for item in items:
+            if self._is_duplicate(owner, item.title):
+                continue
+            created.append(
+                self.create(owner, item.title, item.description, item.status, item.priority)
+            )
+        return created
+
+    def _is_duplicate(self, owner: str, title: str) -> bool:
+        with self._lock:
+            existing = list(self._tasks.values())
+        for task in existing:
+            if task.owner == owner and task.title == title:
+                return True
+        return False
