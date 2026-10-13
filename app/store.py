@@ -66,11 +66,19 @@ class TaskStore:
             return None
         return task
 
-    def list(self, owner: str, status: Optional[TaskStatus] = None) -> List[Task]:
+    def list(
+        self,
+        owner: str,
+        status: Optional[TaskStatus] = None,
+        query: Optional[str] = None,
+    ) -> List[Task]:
         with self._lock:
             tasks = [task for task in self._tasks.values() if task.owner == owner]
         if status is not None:
             tasks = [task for task in tasks if task.status == status]
+        if query:
+            needle = query.lower()
+            tasks = [task for task in tasks if needle in task.title or needle in task.description]
         return sorted(tasks, key=lambda task: task.id)
 
     def update(self, task_id: int, owner: str, changes: Dict[str, object]) -> Optional[Task]:

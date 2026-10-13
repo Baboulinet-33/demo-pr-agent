@@ -61,8 +61,9 @@ def login(payload: LoginRequest) -> TokenResponse:
 def list_tasks(
     user: str = Depends(current_user),
     task_status: Optional[TaskStatus] = Query(default=None, alias="status"),
+    q: Optional[str] = Query(default=None, description="Text search on title and description"),
 ) -> List[Task]:
-    return tasks.list(user, status=task_status)
+    return tasks.list(user, status=task_status, query=q)
 
 
 @app.post("/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
