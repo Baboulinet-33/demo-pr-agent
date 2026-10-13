@@ -3,6 +3,7 @@ from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from . import task_service
 from .models import (
     LoginRequest,
     RegisterRequest,
@@ -67,33 +68,19 @@ def list_tasks(
 
 @app.post("/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(payload: TaskCreate, user: str = Depends(current_user)) -> Task:
-    return tasks.create(
-        owner=user,
-        title=payload.title,
-        description=payload.description,
-        status=payload.status,
-        priority=payload.priority,
-    )
+    return task_service.run(tasks, "create", user, body=payload)
 
 
 @app.get("/tasks/{task_id}", response_model=Task)
 def get_task(task_id: int, user: str = Depends(current_user)) -> Task:
-    task = tasks.get(task_id, user)
-    if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-    return task
+    return task_service.run(tasks, "get", user, task_id=task_id)
 
 
 @app.patch("/tasks/{task_id}", response_model=Task)
 def update_task(task_id: int, payload: TaskUpdate, user: str = Depends(current_user)) -> Task:
-    changes = payload.model_dump(exclude_unset=True)
-    task = tasks.update(task_id, user, changes)
-    if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
-    return task
+    return task_service.run(tasks, "update", user, task_id=task_id, body=payload)
 
 
 @app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(task_id: int, user: str = Depends(current_user)) -> None:
-    if not tasks.delete(task_id, user):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    task_service.run(tasks, "delete", user, task_id=task_id)
