@@ -17,15 +17,13 @@ class UserStore:
         self._passwords: Dict[str, str] = {}
 
     def register(self, email: str, password_hash: str) -> bool:
-        with self._lock:
-            if email in self._passwords:
-                return False
-            self._passwords[email] = password_hash
-            return True
+        if email in self._passwords:
+            return False
+        self._passwords[email] = password_hash
+        return True
 
     def password_hash(self, email: str) -> Optional[str]:
-        with self._lock:
-            return self._passwords.get(email)
+        return self._passwords.get(email)
 
 
 class TaskStore:
@@ -44,20 +42,19 @@ class TaskStore:
         status: TaskStatus = TaskStatus.todo,
         priority: Priority = Priority.medium,
     ) -> Task:
-        with self._lock:
-            task = Task(
-                id=self._sequence,
-                owner=owner,
-                title=title,
-                description=description,
-                status=status,
-                priority=priority,
-                created_at=_now(),
-                updated_at=_now(),
-            )
-            self._tasks[task.id] = task
-            self._sequence += 1
-            return task
+        task = Task(
+            id=self._sequence,
+            owner=owner,
+            title=title,
+            description=description,
+            status=status,
+            priority=priority,
+            created_at=_now(),
+            updated_at=_now(),
+        )
+        self._tasks[task.id] = task
+        self._sequence += 1
+        return task
 
     def get(self, task_id: int, owner: str) -> Optional[Task]:
         with self._lock:
