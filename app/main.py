@@ -1,11 +1,19 @@
+from contextlib import asynccontextmanager
 from typing import List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from . import analytics, export, filters, scheduler as scheduler_module
 from .models import (
+    ExportFormat,
     LoginRequest,
     RegisterRequest,
+    ReportSummary,
+    ReportWindow,
+    ScheduleRequest,
+    SummaryRow,
     Task,
     TaskCreate,
     TaskStatus,
@@ -14,13 +22,24 @@ from .models import (
 )
 from .security import (
     create_access_token,
+    create_report_token,
     decode_access_token,
+    decode_report_token,
     hash_password,
     verify_password,
 )
 from .store import TaskStore, UserStore
 
-app = FastAPI(title="TaskFlow API", version="0.1.0")
+report_scheduler = scheduler_module.Scheduler()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    report_scheduler.start()
+    yield
+
+
+app = FastAPI(title="TaskFlow API", version="0.2.0", lifespan=lifespan)
 
 users = UserStore()
 tasks = TaskStore()
@@ -97,3 +116,70 @@ def update_task(task_id: int, payload: TaskUpdate, user: str = Depends(current_u
 def delete_task(task_id: int, user: str = Depends(current_user)) -> None:
     if not tasks.delete(task_id, user):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+
+@app.get("/reports/summary", response_model=ReportSummary, tags=["reports"])
+def report_summary(
+    user: str = Depends(current_user),
+    window: ReportWindow = Query(default=ReportWindow.day),
+    filter_expression: str = Query(default="", alias="filter"),
+) -> ReportSummary:
+    """Per-bucket aggregation of the caller's tasks."""
+    own_tasks = tasks.snapshot(user)
+    predicate = filters.build_filter(filter_expression) if filter_expression else None
+    if predicate is not None:
+        own_tasks = [task for task in own_tasks if predicate(task)]
+    data = analytics.summarize(own_tasks, window.value)
+    buckets = [SummaryRow(**row) for row in data["buckets"]]
+    return ReportSummary(window=window, buckets=buckets, totals=data["totals"])
+
+
+@app.get("/reports/export", tags=["reports"])
+def report_export(
+    format: ExportFormat = Query(default=ExportFormat.json),
+    token: str = Query(..., description="Signed export token from /reports/export-token"),
+) -> Response:
+    """Stream the caller's tasks as CSV or JSON using a signed URL token.
+
+    The owner is taken from the token so the link stays shareable between a
+    user's own devices without requiring a fresh bearer login.
+    """
+    subject = decode_report_token(token)
+    if subject is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid export token")
+    rows = tasks.snapshot(subject)
+    body = export.build_export(rows, format.value)
+    if format == ExportFormat.csv:
+        media_type = "text/csv"
+        filename = "report.csv"
+    else:
+        media_type = "application/json"
+        filename = "report.json"
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/reports/export-token", tags=["reports"])
+def issue_export_token(user: str = Depends(current_user)) -> dict:
+    """Mint a signed token for the export endpoint (valid for one day)."""
+    return {"token": create_report_token(user)}
+
+
+@app.post("/reports/schedule", status_code=status.HTTP_201_CREATED, tags=["reports"])
+def schedule_report(payload: ScheduleRequest, user: str = Depends(current_user)) -> dict:
+    """Schedule a recurring export of the caller's tasks to the metrics store."""
+    def _export_job() -> None:
+        rows = tasks.snapshot(user)
+        tasks.add_metric(user, f"export:{payload.format.value}", float(len(rows)))
+
+    job_id = report_scheduler.add(payload.interval_seconds, _export_job)
+    return {"job_id": job_id, "interval_seconds": payload.interval_seconds, "status": "scheduled"}
+
+
+@app.get("/reports/metrics", tags=["reports"])
+def report_metrics(user: str = Depends(current_user)) -> dict:
+    """Return the recorded export metrics for the caller."""
+    return {"metrics": [m for m in tasks.metrics(user) if m["owner"] == user]}

@@ -35,6 +35,7 @@ class TaskStore:
         self._lock = threading.Lock()
         self._tasks: Dict[int, Task] = {}
         self._sequence = 1
+        self._metrics: List[dict] = []
 
     def create(
         self,
@@ -89,3 +90,30 @@ class TaskStore:
                 return False
             del self._tasks[task_id]
             return True
+
+    def snapshot(self, owner: str) -> List[Task]:
+        """Return the user's tasks as an ordered copy, oldest first."""
+        with self._lock:
+            return sorted(
+                (task for task in self._tasks.values() if task.owner == owner),
+                key=lambda task: task.id,
+            )
+
+    def completed_before(self, owner: str, before: datetime) -> List[Task]:
+        """Return the user's tasks completed strictly before ``before``."""
+        with self._lock:
+            tasks = [
+                task
+                for task in self._tasks.values()
+                if task.owner == owner and task.status == TaskStatus.done and task.updated_at < before
+            ]
+        return sorted(tasks, key=lambda task: task.id)
+
+    def add_metric(self, owner: str, name: str, value: float) -> None:
+        """Record a lightweight usage metric for the user."""
+        self._metrics.append({"owner": owner, "name": name, "value": value})
+
+    def metrics(self, owner: str) -> List[dict]:
+        """Return the metrics recorded for ``owner``."""
+        with self._lock:
+            return self._metrics
